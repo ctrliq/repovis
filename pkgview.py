@@ -3,9 +3,9 @@
 
 from lib.PackageRead import *
 
+# Read packages from these repos, only grab latest:
 repos = ["http://dl.rockylinux.org/pub/rocky/8/BaseOS/x86_64/os/","http://dl.rockylinux.org/pub/rocky/8/AppStream/x86_64/os/"]
-
-packageRepo1 = PackageRead(repos)
+packageRepo1 = PackageRead(repos, True)
 
 pkgGroup1 = packageRepo1.pkg
 
@@ -31,6 +31,6 @@ for p in packageRepo1.pkg:
         changes += str(p.changelogs[c]["text"]) + "\n"
     changes += "\"\"\""
     
-    print("N V R == " + p.rName + "   "  + p.version + "  " + p.release +  "\n\tRemote URL:" + str(p.remote_location())  + "\n\tmodule_label == " + p.module_label + "\n\tChangelog == \n" + str(changes) +  "\n\n")
+    print("N V R == " + p.rName + "-"  + p.version + "-" + p.release +  "\n\tRemote URL:" + str(p.remote_location())  + "\n\tmodule_label == " + p.module_label + "\n\tBuildTime == " + str(p.buildtime) +  "\n\tChangelog == \n" + str(changes) +  "\n\n")
 
 

@@ -2,7 +2,7 @@
 
 import dnf
 import dnf.module.module_base
-import hawkey
+import hawkey, datetime, re
 from collections import OrderedDict
 
 import os,shutil,subprocess,sys
@@ -43,7 +43,7 @@ class PackageRead:
         for r in range(0, len(repoList)):
             repos.append(self.dnfBase.repos.add_new_repo("repoId_" + str(r), dnfConf, baseurl=[str(repoList[r])]))
             repos[r].load_metadata_other = True
-            repos[r].module_hotfixes = True    
+            repos[r].module_hotfixes = True
         
         self.dnfBase.read_all_repos()
         self.dnfBase.fill_sack(load_system_repo=False)
@@ -56,24 +56,19 @@ class PackageRead:
         # (with the source name as canonical name, and data tagging the module label, if any)
         for i in tmpPkgList:
             i.module_label="-"
-          #i.cve_list=[]
             
             # Skip any package which falls outside our buildTime criteria:
             if i.buildtime < self.buildTime:
                 continue
-                        
             
-            # If the binary package is a child package of source w/ same version, then we will use that srpm name instead:
-            if str(i.version + "-" + i.release) in str(i.sourcerpm):
-                i.rName = i.source_name
-            else:
-                i.rName = i.name
-          
+            # We are only interested in the srpm (avoids duplicates), so we get the version + release of that src given the artifact name:
+            # (sometimes the child binary RPM has a different version, but we are only interested in the src rpm)
+            i.source_version, i.source_release = self.getVersionFromSrpm(i.sourcerpm, i.source_name)
+            
             # If we've already done this same version src rpm, skip to the next.  We don't want duplicates:
             pkgFound = False
             for p in self.pkg:
-                if i.rName == p.rName and i.version == p.version and i.release == p.release:
-                    #print("DEBUG :: Found matching version : " + i.rName + "-" + i.version + "-" + i.release)
+                if i.source_name == p.source_name and i.source_version == p.source_version and i.source_release == p.source_release:
                     pkgFound = True
           
             if pkgFound == True:
@@ -81,8 +76,8 @@ class PackageRead:
 
 
             # Modularity case:  if package is modular, we really need to find its moduleName:Stream, and mark it as such
-            if ".module" in i.release:
-                i.module_label = self.getModuleLabel(i, repos)
+            if ".module" in i.source_release:
+                i.module_label = self.getModuleLabel(i)
             
             # If latest is true, we check if this package is the most recent one (determined by build time, easier than comparing version strings)
             # If a later one is found in the same modular stream, we simply skip adding it
@@ -92,17 +87,20 @@ class PackageRead:
             discardMe = False
             if latest == True:
                 for pk in self.pkg[:]:
-                    if pk.rName == i.rName and pk.module_label == i.module_label and pk.buildtime > i.buildtime:
-                        print("DEBUG :: " +  i.rName + "-" + i.version + "-" + i.release + " :: " + i.module_label + " is being discarded, buildTime " + str(i.buildtime) + " is determined to be older than " + pk.rName + "-" + pk.version + "-" + pk.release)
+                    if pk.source_name == i.source_name and pk.module_label == i.module_label and pk.buildtime > i.buildtime:
                         discardMe = True
                         break
-                    if pk.rName == i.rName and pk.module_label == i.module_label and i.buildtime > pk.buildtime:
-                        print("DEBUG :: " + pk.rName + "-" + pk.version + "-" + pk.release + " is being deleted, newer version discovered")
+                    if pk.source_name == i.source_name and pk.module_label == i.module_label and i.buildtime > pk.buildtime:
                         self.pkg.remove(pk)
                         
             
             if discardMe == True:
                 continue
+            
+            # Get filtered changelog entries (only changes since the 
+            i.filter_changelogs = self.getFilteredChangeLog(i.changelogs)
+            
+            i.cve_dict = self.getCveFromChangeLog(i.filter_changelogs)
             
             
             # Add our slightly-modified package to the main self.pkg list:
@@ -111,30 +109,48 @@ class PackageRead:
 
         return
 
-          # Scan changelog for mentions of "CVE-" to detect fixes:
-          #for change in i.changelogs:
-          #  for word in change["text"].split(" "):
-          #    if str(word).startswith("CVE-") or str(word).startswith("cve-"):
-          #      i.cve_list.append(str(word).strip())
 
-          # Append this package to the final list:
-          
-          #print("DEBUG :: pkg[latest].module_label  == " +  str(pkg[len(pkg) -1].module_label) + "####" + i.module_label)
-
-
-            #dnf.cli.cli.run("-q --repofrompath ' + repoTmp.id + ',' + repoTmp.baseurl[0] + ' --repoid ' + repoTmp.id + ' module provides ' + i.name + '-' + i.version + '-' + i.release")
-
-
-
-    #def makeModuleMapping(self, pkgList, repos):
+    # Filter changelog for only relevant entries (entries created after by timestamp)
+    def getFilteredChangeLog(self, changelog): 
+        filteredChanges = []
         
+        # If changelog has none or 1 entry, simply return empty or that single entry
+        # (first entry is always added, no matter what time)
+        if len(changelog) < 1:
+            return filteredChanges
+        
+        filteredChanges.append(changelog[0])
+        if len(changelog) == 1:
+            return filteredChanges
+        
+        # Only collect changes inside the desired date range
+        # (the first change is always collected)
+        for c in range(1, len(changelog)):
+            if int(datetime.datetime.fromordinal(changelog[c]["timestamp"].toordinal()).timestamp()) > self.buildTime:
+                filteredChanges.append(changelog[c])
+        
+        return filteredChanges    
+    
+    
+    # Return a dictionary-list of date:cve's found in a package's changelog
+    def getCveFromChangeLog(self, changelog):
+        cveDict = {}
+        # Compile regex isolating  "CVE-####-#####" text
+        cveRegex = re.compile('CVE-\d+-\d+',  re.IGNORECASE)
+        for c in range(0, len(changelog)):
+            tmpChange = changelog[c]["text"].upper()
+            
+            # Find all CVEs in the change text, de-duplicated in a list:
+            cveList = list(dict.fromkeys(cveRegex.findall(tmpChange)))
+            if len(cveList) > 0:
+                cveDict[str(changelog[c]["timestamp"])] = cveList
+        
+        return cveDict
 
-  #for j in i.changelogs:
-  #  print(str(j))
 
-    # Given a set of repos and a package, find out which module this package belongs to:
+    # Given a package object, find out which module this package belongs to:
     # Logic for this is lifted from _what_provides() in DNF's own module_base.py
-    def getModuleLabel(self, package, repos):     
+    def getModuleLabel(self, package):     
         modulePackages = self.dnfBase._moduleContainer.getModulePackages()
         baseQuery = self.dnfBase.sack.query().filterm(empty=True).apply()
         getBestInitQuery = self.dnfBase.sack.query(flags=hawkey.IGNORE_MODULAR_EXCLUDES)
@@ -160,37 +176,17 @@ class PackageRead:
                         if pkg.name in profile.getContent():
                             profiles.append(profile.getName())
                     lines = OrderedDict()
-                    print("DEBUG ::  package " +  package.name + '-' + package.version + '-' + package.release + "    found to be part of module  "  + str(modulePackage.getFullIdentifier().split(":")[0] + ":" + modulePackage.getFullIdentifier().split(":")[1]))
-                    #lines["Module"] = modulePackage.getFullIdentifier()
-                    #lines["Profiles"] = " ".join(sorted(profiles))
-                    #lines["Repo"] = modulePackage.getRepoID()
-                    #lines["Summary"] = modulePackage.getSummary()
+                    print("DEBUG ::  package " +  package.source_name + '-' + package.source_version + '-' + package.source_release + "    found to be part of module  "  + str(modulePackage.getFullIdentifier().split(":")[0] + ":" + modulePackage.getFullIdentifier().split(":")[1]))
                     return str(modulePackage.getFullIdentifier().split(":")[0] + ":" + modulePackage.getFullIdentifier().split(":")[1])
-        
-        
-        
-        reposFromPath = ""
-        repoIds = ""
-        for r in repos:
-            reposFromPath += "  --repofrompath " + r.id + "," + r.baseurl[0]
-            repoIds += r.id + ","
-        
-        cmd = 'dnf -q --setopt=cachedir=/tmp/temp_dnf_cache'  + "  " + reposFromPath + "  --repoid " + repoIds + ' module provides ' + package.name + '-' + package.version + '-' + package.release
 
-        # We're looking for the "Module   :   <module>:<stream>:<X>:<Y>" line in the dnf output here.  We can yoink the module:stream info from it:
-        #for line in subprocess.run([cmd], shell=True, text=True).stdout.split("\n"):
-        for line in str(subprocess.check_output(cmd, shell=True, text=True)).split("\n"):
-            if line.startswith("Module  "):
-                return str(line.split(":")[1].strip() + ':' +  line.split(":")[2].strip())
-            
-        # If we somehow didn't find a "Module   :" line in DNF output, return empty
+        # catch-all just in case
         return ""
-
-
-  #pp.pprint(i.changelogs)
-
-#print(str(dnfBase.repos["testRocky"]))
-#print(str(dnfConf.dump()))
-
-
+    
+    # Get version + release given srpm artifact name
+    def getVersionFromSrpm(self, srpm, srcName):
+        srpm = srpm.replace(srcName + "-", "")
+        srpm = srpm.replace(".src.rpm", "")
+        srcVersion = srpm.split("-")[0]
+        srcRelease = srpm.split("-")[1]
+        return srcVersion, srcRelease
 

@@ -1,0 +1,80 @@
+<html>
+
+<head>
+<title>@@TITLE@@</title>
+
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+
+<link rel="stylesheet" type="text/css" href="datatables.min.css"/>
+<script type="text/javascript" src="jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="datatables.min.js"></script>
+
+</head>
+
+<body>
+
+<h1>@@TITLE@@</h1>
+
+@@DESCRIPTION@@
+
+<p />
+
+This page was generated on <b>@@TIMESTAMP@@</b>
+
+<p><br /><br />
+
+<table id="RockyData" class="display">
+<thead>
+<tr>
+  <th style="text-align:left">Package</th>
+  <th style="text-align:left">Version</th>
+  <th style="text-align:left">Build Date</th>
+  <th style="text-align:left">Changelog</th>
+  <th style="text-align:left">CVE Fixes</th>
+</tr>
+</thead>
+<tbody>
+@@TABLE_DATA@@
+</tbody>
+</table>
+
+
+	
+<script type="text/javascript">
+  // Simple datatables table with some default settings, ordered by date descending
+  $(document).ready(function() {
+    $('#RockyData').DataTable( {
+        "paging":   true,
+        "ordering": true,
+        "info":     true,
+        "order": [[ 0, "desc" ]],
+        "lengthMenu": [ [100, 200, 500, -1], [100, 200, 500, "All"] ]
+      
+    } );
+} );
+
+// Reveal/unreveal full changelog when user clicks "show all" link:
+// So table data needs to look like:  <td> [changelog_preview_3_lines] <br /><br /><a href="#">[Show All]</a><pre>FULL_CHANGELOG</pre>
+$(document).ready(
+  function() {
+  $('td pre').slideUp();
+    $('td a').click(
+      function(){
+       $(this).closest('tr').find('pre').slideToggle();
+      }
+      );
+  }
+  );
+
+</script>
+</body>
+
+
+<p />
+
+
+
+</html>
+

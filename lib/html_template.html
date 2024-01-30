@@ -1,5 +1,19 @@
 <html>
 
+<!--
+HTML Template for displaying package history results.  Uses jquery/datatables/css.
+
+Template variables that the program fills in:
+(variables are wrapped in "@@" to mark them)
+
+TITLE
+DESCRIPTION
+START_DATE
+TIMESTAMP
+TABLE_DATA
+
+-->
+
 <head>
 <title>@@TITLE@@</title>
 
@@ -20,7 +34,8 @@
 @@DESCRIPTION@@
 
 <p />
-
+Showing builds from <b>@@START_DATE@@</b> and later.
+<p />
 This page was generated on <b>@@TIMESTAMP@@</b>
 
 <p><br /><br />
@@ -31,8 +46,8 @@ This page was generated on <b>@@TIMESTAMP@@</b>
   <th style="text-align:left">Package</th>
   <th style="text-align:left">Version</th>
   <th style="text-align:left">Build Date</th>
-  <th style="text-align:left">Changelog</th>
   <th style="text-align:left">CVE Fixes</th>
+  <th style="text-align:left">Changelogs</th>
 </tr>
 </thead>
 <tbody>
@@ -49,14 +64,34 @@ This page was generated on <b>@@TIMESTAMP@@</b>
         "paging":   true,
         "ordering": true,
         "info":     true,
-        "order": [[ 0, "desc" ]],
-        "lengthMenu": [ [100, 200, 500, -1], [100, 200, 500, "All"] ]
+        "order": [[ 2, "desc" ]],
+        "lengthMenu": [ [100, 200, 500, -1], [100, 200, 500, "All"] ],
+        "columns": [
+            null,
+            null,
+            null,
+            { "width": "15%" },
+            null
+        ],
+        // Reveal+unreveal full changelog when user clicks a "show all" link:
+        // So a data cell needs to look like:  <td> [changelog_preview_5_lines] <br /><br /><a>[Show All]</a><pre>FULL_CHANGELOG</pre> - only the <pre> contents are revealed/hidden
+        "drawCallback": function( settings ) {
+            $('td a').off('click');   
+            $('td pre').slideUp();
+            $('td a').click(          
+                function () {
+                    $(this).closest('tr').find('pre').slideToggle()
+                }
+            );
+            
+        }
       
     } );
-} );
+  } );
 
 // Reveal/unreveal full changelog when user clicks "show all" link:
-// So table data needs to look like:  <td> [changelog_preview_3_lines] <br /><br /><a href="#">[Show All]</a><pre>FULL_CHANGELOG</pre>
+// So table data needs to look like:  <td> [changelog_preview_5_lines] <br /><br /><a href="#">[Show All]</a><pre>FULL_CHANGELOG</pre>
+/*
 $(document).ready(
   function() {
   $('td pre').slideUp();
@@ -67,7 +102,7 @@ $(document).ready(
       );
   }
   );
-
+*/
 </script>
 </body>
 

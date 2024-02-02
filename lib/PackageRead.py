@@ -7,8 +7,6 @@ from collections import OrderedDict
 
 import os,shutil,subprocess,sys
 
-
-
 def _profile_comparison_key(profile):
     return profile.getName()
 
@@ -24,28 +22,36 @@ class PackageRead:
     dnfBase = set()
     buildTime = 0
     
-    def __init__(self, repoList, latest, bTime):
+    def __init__(self, repoList, repoDir, latest, bTime):
         if os.path.exists('/tmp/temp_dnf_cache'):
             shutil.rmtree('/tmp/temp_dnf_cache')
         
         self.buildTime = bTime
 
         self.dnfBase = dnf.Base()
-        dnfConf = self.dnfBase.conf
 
-        dnfConf.gpgcheck=False
-        dnfConf.reposdir="/tmp"
-        dnfConf.cachedir="/tmp/temp_dnf_cache"
+        # If repoDir has been set, we use that instead of system-default /etc/yum.repos.d/
+        if repoDir != "":
+            self.dnfBase.conf.reposdir = repoDir
 
+        self.dnfBase.conf.gpgcheck=False
+        self.dnfBase.conf.cachedir="/tmp/temp_dnf_cache"
 
-        # Add all the repos to our dnf configuration.  Each one is designated "repoId_#", with the passed in list of URLs
-        repos=[]
-        for r in range(0, len(repoList)):
-            repos.append(self.dnfBase.repos.add_new_repo("repoId_" + str(r), dnfConf, baseurl=[str(repoList[r])]))
-            repos[r].load_metadata_other = True
-            repos[r].module_hotfixes = True
+        try:
+            self.dnfBase.read_all_repos()
+        except:
+            print('Could not read repos', file=sys.stderr)
+            sys.exit(1)
+
+        # Enable only the repos specified on the command line ("repoList[]")
+        for repo in self.dnfBase.repos:
+            if repo not in repoList:
+                self.dnfBase.repos[repo].disable()
+            else:
+                self.dnfBase.repos[repo].enable()
+                self.dnfBase.repos[repo].load_metadata_other = True
+                self.dnfBase.repos[repo].module_hotfixes = True
         
-        self.dnfBase.read_all_repos()
         self.dnfBase.fill_sack(load_system_repo=False)
         
         # Gather list of all packages in the repo to a temporary list:

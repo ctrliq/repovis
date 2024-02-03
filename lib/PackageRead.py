@@ -99,7 +99,6 @@ class PackageRead:
                     if pk.source_name == i.source_name and pk.module_label == i.module_label and i.buildtime > pk.buildtime:
                         self.pkg.remove(pk)
                         
-            
             if discardMe == True:
                 continue
             
@@ -107,7 +106,6 @@ class PackageRead:
             i.filter_changelogs = self.getFilteredChangeLog(i.changelogs)
             
             i.cve_dict = self.getCveFromChangeLog(i.filter_changelogs)
-            
             
             # Add our slightly-modified package to the main self.pkg list:
             self.pkg.append(i)
@@ -182,7 +180,7 @@ class PackageRead:
                         if pkg.name in profile.getContent():
                             profiles.append(profile.getName())
                     lines = OrderedDict()
-                    print("DEBUG ::  package " +  package.source_name + '-' + package.source_version + '-' + package.source_release + "    found to be part of module  "  + str(modulePackage.getFullIdentifier().split(":")[0] + ":" + modulePackage.getFullIdentifier().split(":")[1]))
+                    #print("DEBUG ::  package " +  package.source_name + '-' + package.source_version + '-' + package.source_release + "    found to be part of module  "  + str(modulePackage.getFullIdentifier().split(":")[0] + ":" + modulePackage.getFullIdentifier().split(":")[1]))
                     return str(modulePackage.getFullIdentifier().split(":")[0] + ":" + modulePackage.getFullIdentifier().split(":")[1])
 
         # catch-all just in case

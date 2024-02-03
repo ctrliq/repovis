@@ -45,6 +45,7 @@ This page was generated on <b>@@TIMESTAMP@@</b>
 <tr>
   <th style="text-align:left">Package</th>
   <th style="text-align:left">Version</th>
+  <th style="text-align:left">Module</th>
   <th style="text-align:left">Build Date</th>
   <th style="text-align:left">CVE Fixes</th>
   <th style="text-align:left">Changelogs</th>
@@ -64,16 +65,19 @@ This page was generated on <b>@@TIMESTAMP@@</b>
         "paging":   true,
         "ordering": true,
         "info":     true,
-        "order": [[ 2, "desc" ]],
+        "order": [[ 3, "desc" ]],
         "lengthMenu": [ [100, 200, 500, -1], [100, 200, 500, "All"] ],
         "columns": [
+            null,
             null,
             null,
             null,
             { "width": "15%" },
             null
         ],
-        // Reveal+unreveal full changelog when user clicks a "show all" link:
+        // Logic for expanding/contracting full changelog in data cell:
+        // need to turn off (reset) all "click" actions every time the table is updated (user selects different page, different number of rows displayed, etc.)
+        // All rows are "slideUp" by default, and toggled when a user clicks the <a> link for Show More in the cell
         // So a data cell needs to look like:  <td> [changelog_preview_5_lines] <br /><br /><a>[Show All]</a><pre>FULL_CHANGELOG</pre> - only the <pre> contents are revealed/hidden
         "drawCallback": function( settings ) {
             $('td a').off('click');   
@@ -89,27 +93,11 @@ This page was generated on <b>@@TIMESTAMP@@</b>
     } );
   } );
 
-// Reveal/unreveal full changelog when user clicks "show all" link:
-// So table data needs to look like:  <td> [changelog_preview_5_lines] <br /><br /><a href="#">[Show All]</a><pre>FULL_CHANGELOG</pre>
-/*
-$(document).ready(
-  function() {
-  $('td pre').slideUp();
-    $('td a').click(
-      function(){
-       $(this).closest('tr').find('pre').slideToggle();
-      }
-      );
-  }
-  );
-*/
 </script>
 </body>
 
 
 <p />
-
-
 
 </html>
 

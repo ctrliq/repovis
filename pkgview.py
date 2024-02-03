@@ -31,13 +31,15 @@ if args.startdate == "" and int(args.days) <= 0:
     sys.exit(1)
 
 
-
 packages = PackageRead(args.repos,args.repodir, True, buildTime)
 
 out = Output(packages.pkg, args.file)
 
 if args.output == "html":
-    out.writeHTML(args.title, args.description, str(datetime.datetime.utcfromtimestamp(buildTime).strftime('%Y-%m-%d')))
+    out.writeHTML(args.title, args.description, buildTime)
+
+if args.output == "csv":
+    out.writeCSV()
 
 sys.exit(0)
 

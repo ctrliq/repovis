@@ -1,12 +1,11 @@
 #!/usr/bin/python3
 
-import datetime
-import time, os, shutil, sys
+import datetime, time
+import os, shutil, sys
 
-# Given package build + changelog data, produce HTML, CSV, or other output:
+# Given package data (package list from PackageRead class), produce HTML, CSV, or other output:
 
 class Output:
-    
     pkgs = []
     title = ""
     description = ""
@@ -20,18 +19,17 @@ class Output:
         self.pkgs = pkgs
         self.outFile = outFile
         return
-     
-     
-    def writeHTML(self, title, description, startDate):
+
+    def writeHTML(self, title, description, buildTime):
+        startDate = str(datetime.datetime.utcfromtimestamp(buildTime).strftime('%Y-%m-%d'))
         tableData = ""
        
         for p in self.pkgs:
-            tableData += "<tr>\n<td> <b>" + p.source_name + "</b> </td>\n<td> " + p.source_version + "-" + p.source_release + " </td>\n<td> " + str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d')) + "</td>\n"
+            tableData += "<tr>\n<td> <b>" + p.source_name + "</b> </td>\n<td> " + p.source_version + "-" + p.source_release + " </td>\n<td> " + str(p.module_label) + " </td>\n<td> " + str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d')) + "</td>\n"
             
             # Get CVEs summary (marked by date):
             cveText = "<ul>"
             for date in p.cve_dict.keys():
-                #cveText += "<li>" + str(date) + "</li>\n<ul>"
                 for cve in p.cve_dict[date]:
                     cveText += "<li>" + cve + "</li>\n"
                     
@@ -99,6 +97,26 @@ class Output:
         else:
             print(htmlData)
 
+    
+    # write csv output
+    def writeCSV(self):
+        # csv header:
+        csvData = "Package,Version,Module,Build Date,CVE Fixes\n"
+        
+        for p in self.pkgs:
             
+            # Get CVE List text:
+            cveText = " "
+            for date in p.cve_dict.keys():
+                for cve in p.cve_dict[date]:
+                    cveText += cve + " " 
             
+            csvData += p.source_name + "," + p.source_version + "-" + p.source_release + "," + p.module_label + "," + str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d')) + "," + cveText + "\n"
 
+        if self.outFile != "":
+            f = open(self.outFile, 'w')
+            f.write(csvData)
+            f.close()
+            print('CSV file written to: ' + str(self.outFile), file=sys.stderr)
+        else:
+            print(csvData)

@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import datetime
-import time, os
+import time, os, shutil, sys
 
 # Given package build + changelog data, produce HTML, CSV, or other output:
 
@@ -52,7 +52,6 @@ class Output:
             changeText = changeText.strip()
             # Changelog longer than 5 lines ==> grab first 5 lines as a summary
             if len(changeText.split("\n")) >= 4:
-                print("DEBUG :: " + p.source_name + " -- Adding to changeSummary...")
                 for line in range(0,3):
                     changeSummary += changeText.split("\n")[line] + "\n"
                
@@ -62,36 +61,43 @@ class Output:
             if changeSummary == "":
                 tableData += "<td> " + changeText.replace("\n","<br />\n") + "</td>\n"
             else:
-                #print("DEBUG :: changeSummary for  "  + p.source_name + "  is : \n" + changeSummary)
                 tableData +="<td> " + changeSummary + "<br /><a><u>[Show All]</u></a><pre>" + changeText + "</pre></td>\n"
                 
             tableData += "</tr>\n\n"
             
             
-            # write HTML:
-            # Current timestamp
-            TIMESTAMP = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-            TIMESTAMP += " (" + time.tzname[1] + ")"
+        # write HTML:
+        # Current timestamp
+        TIMESTAMP = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+        TIMESTAMP += " (" + time.tzname[1] + ")"
 
-            # HTML template file should be in this same lib/ folder
-            templateHtml = os.path.join(os.path.dirname(__file__), 'html_template.html')
-            
-            f = open(templateHtml, 'r')
-            htmlData = f.read()
+        # HTML template file should be in this same lib/ folder
+        templateHtml = os.path.join(os.path.dirname(__file__), 'html', 'html_template.html')
+        
+        f = open(templateHtml, 'r')
+        htmlData = f.read()
+        f.close()
+        
+        htmlData = htmlData.replace("@@TITLE@@", title)
+        htmlData = htmlData.replace("@@DESCRIPTION@@", description)
+        htmlData = htmlData.replace("@@START_DATE@@", str(startDate))
+        htmlData = htmlData.replace("@@TIMESTAMP@@", str(TIMESTAMP))
+        htmlData = htmlData.replace("@@TABLE_DATA@@", str(tableData))
+        
+        if self.outFile != "":
+            f = open(self.outFile, 'w')
+            f.write(htmlData)
             f.close()
+            outDir = os.path.dirname(os.path.abspath(self.outFile))
             
-            htmlData = htmlData.replace("@@TITLE@@", title)
-            htmlData = htmlData.replace("@@DESCRIPTION@@", description)
-            htmlData = htmlData.replace("@@START_DATE@@", str(startDate))
-            htmlData = htmlData.replace("@@TIMESTAMP@@", str(TIMESTAMP))
-            htmlData = htmlData.replace("@@TABLE_DATA@@", str(tableData))
+            # Copy html helper components (datatables/jquery) to HTML out dir
+            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'html', 'jquery-3.6.0.min.js'), os.path.join(outDir, 'jquery-3.6.0.min.js'))
+            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'html', 'datatables.min.js'), os.path.join(outDir, 'datatables.min.js'))
+            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'html', 'datatables.min.css'), os.path.join(outDir, 'datatables.min.css'))
+            print('JS, CSS, and HTML output written to: ' + str(outDir), file=sys.stderr)
             
-            if self.outFile != "":
-                f = open(self.outFile, 'w')
-                f.write(htmlData)
-                f.close()
-            else:
-                print(htmlData)
+        else:
+            print(htmlData)
 
             
             

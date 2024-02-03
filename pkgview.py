@@ -1,64 +1,43 @@
 #!/usr/bin/python3
 
-"""
-options:
-
---days 60
---startdate 2023-11-05
---latest false (true by default)
---file <file.csv>  (make it take a folder for html(?))
---folder /tmp/html_out/ (for html output - must exist)
---outform html/csv/yaml
---cveyaml  <extra_cve_defs.yaml>  (yaml file with extra CVE listings to add to output)
---repodir /path/to/*.repo  --> override system repos.d folder with own location
---title (html title) (add as comment to yaml output header?)
---description (html description) (add as comment to yaml output header?
-
-N args:
-repo1 repo2 repo3
-"""
-
 from lib.PackageRead import *
 from lib.Output import *
 import time,datetime,sys
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('-d', '--days', type=int, default=0, help='How many days back should the repository history be searched through')
+parser.add_argument('-s', '--startdate', type=str, default="", help='What is the earliest date we should start searching repository history?  (Conflicts with --days)')
+parser.add_argument('-f', '--file', type=str, default='', help='File to write report to (default is stdout). HTML output will have .css and .js files copied to same directory.')
+parser.add_argument('-o', '--output', type=str, default='html', choices=['html', 'csv', 'yaml-cve'], help='Type of output to produce.  HTML web page, Comma separated value text, or a summary of CVEs in YAML form.')
+parser.add_argument('-r', '--repodir', type=str, default="", help="Alternate DNF repository config directory, where *.repo files are located.  Default is /etc/yum.repos.d/")
+parser.add_argument('-c', '--cveyaml', type=str, default="", help="Custom yaml file to add as input.  Contains additional dates + CVEs resolved.  See docs for specific YAML format.") 
+parser.add_argument('-t', '--title', type=str, default="Repository Recent History Summary", help="Title at top of document for HTML and YAML output.  Defaults to something bland.")
+parser.add_argument('--description', type=str, default="", help="Description header (below title) at top of document for HTML and YAML output.  Can also contain custom HTML.")
+parser.add_argument('repos', type=str, nargs='+', help="DNF Repositories (one or more, space-separated) to consider. Must be the proper dnf name as expressed in \"dnf repolist\"")  
 
-daysAgo = 0
-startDate = ""
-buildTime = 0
+args = parser.parse_args()
 
-
-#daysAgo=60
-startDate = "2022-12-15"
-latest = True
-fileOut = "/tmp/repohistory.html"
-folderOut = ""
-outForm = "html"
-cveYaml = ""
-repoDir = "/home/skip/src/pkgview/tmp"
-title = "CIQ Rocky LTS 8.6 Packages"
-description = "A look at CIQ LTS-8.6 packages, publication times, CVE fixes, and summary."
-repoList = ['lts-8.6']
 
 # Calculate the "origin point": any packages built before this time are not checked for changes
-if startDate != "":
-    buildTime = int(datetime.datetime.strptime(startDate, "%Y-%m-%d").timestamp())
+if int(args.days) > 0:
+    buildTime = int(time.time()) - int(args.days * 86400)
 
-if int(daysAgo) > 0:
-    buildTime = int(time.time()) - int(daysAgo * 86400)
+if args.startdate != "":
+    buildTime = int(datetime.datetime.strptime(args.startdate, "%Y-%m-%d").timestamp())
 
-if startDate == "" and int(daysAgo) <= 0:
-    print("Error, *must* specify --days  or --date YYYY-MM-DD  on the command line!")
+if args.startdate == "" and int(args.days) <= 0:
+    print("Error, *must* specify --days  or --startdate YYYY-MM-DD  on the command line!")
     sys.exit(1)
 
-packages = PackageRead(repoList,repoDir, True, buildTime)
-
-#pkgGroup1 = packageRepo1.pkg
 
 
-out = Output(packages.pkg, fileOut)
+packages = PackageRead(args.repos,args.repodir, True, buildTime)
 
-out.writeHTML(title, description, str(datetime.datetime.utcfromtimestamp(buildTime).strftime('%Y-%m-%d')))
+out = Output(packages.pkg, args.file)
+
+if args.output == "html":
+    out.writeHTML(args.title, args.description, str(datetime.datetime.utcfromtimestamp(buildTime).strftime('%Y-%m-%d')))
 
 sys.exit(0)
 

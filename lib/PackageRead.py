@@ -4,6 +4,7 @@ import dnf
 import dnf.module.module_base
 import hawkey, datetime, re
 from collections import OrderedDict
+from operator import itemgetter
 
 import os,shutil,subprocess,sys
 
@@ -109,8 +110,6 @@ class PackageRead:
             
             # Add our slightly-modified package to the main self.pkg list:
             self.pkg.append(i)
-
-
         return
 
 
@@ -139,6 +138,7 @@ class PackageRead:
     # Return a dictionary-list of date:cve's found in a package's changelog
     def getCveFromChangeLog(self, changelog):
         cveDict = {}
+        cveRawList = []
         # Compile regex isolating  "CVE-####-#####" text
         cveRegex = re.compile('CVE-\d+-\d+',  re.IGNORECASE)
         for c in range(0, len(changelog)):
@@ -146,8 +146,15 @@ class PackageRead:
             
             # Find all CVEs in the change text, de-duplicated in a list:
             cveList = list(dict.fromkeys(cveRegex.findall(tmpChange)))
+
+            # If we already previously found a cve in another changelog entry, we don't want to duplicate:
+            for i in cveList:
+                if i in cveRawList:
+                    cveList.remove(i)
+            # Add list of CVEs to our dictionary of dates:
             if len(cveList) > 0:
                 cveDict[str(changelog[c]["timestamp"])] = cveList
+                cveRawList.extend(cveList)
         
         return cveDict
 

@@ -41,5 +41,8 @@ if args.output == "html":
 if args.output == "csv":
     out.writeCSV()
 
+if args.output == "yaml-cve":
+    out.writeCveYAML(args.title, args.description)
+
 sys.exit(0)
 

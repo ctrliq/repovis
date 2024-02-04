@@ -2,6 +2,7 @@
 
 import datetime, time
 import os, shutil, sys
+import yaml
 
 # Given package data (package list from PackageRead class), produce HTML, CSV, or other output:
 
@@ -120,3 +121,39 @@ class Output:
             print('CSV file written to: ' + str(self.outFile), file=sys.stderr)
         else:
             print(csvData)
+
+
+    def writeCveYAML(self, title, description):
+        yamlText = "# " + title + "\n\n"
+        yamlText += "# " + description + "\n\n"
+        yamlText += "---\n"
+
+        # We build a simplified dictionary from our list of packages with only name/date/cve listings:
+        pkgsObj = {}
+
+        for p in self.pkgs:
+            # If the CVE list is empty for this package, skip it:
+            if len(p.cve_dict) == 0:
+                continue
+
+            pkgsObj[p.source_name] = {}
+            pkgsObj[p.source_name]["Build_Date"] = str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d'))
+            pkgsObj[p.source_name]["CVE_Fixes"] = {}
+            for date in p.cve_dict.keys():
+                pkgsObj[p.source_name]["CVE_Fixes"][date] = []
+                for cve in p.cve_dict[date]:
+                    pkgsObj[p.source_name]["CVE_Fixes"][date].append(str(cve))
+
+
+        # Purely for show, but Python likes to not-indent yaml list entries and put single quotes around the date dict keys:
+        yamlText = yamlText.replace("  '", "  ")
+        yamlText = yamlText.replace("':", ":")
+        yamlText = yamlText.replace(" - ", "   - ")
+
+        if self.outFile != "":
+            f = open(self.outFile, 'w')
+            f.write(yamlText)
+            f.close()
+            print('YAML CVE file written to: ' + str(self.outFile), file=sys.stderr)
+        else:
+            print(yamlText)

@@ -62,7 +62,7 @@ class PackageRead:
         # If we have an extra YAML CVE-fixes file given on the command line, load that into a dict:
         if cveFile != "":
             with open(cveFile) as f:
-                self.cveExtra = yaml.load(f, Loader=yaml.FullLoader)
+                self.cveExtra = yaml.safe_load(f)
         else:
             self.cveExtra = {}
 
@@ -180,11 +180,11 @@ class PackageRead:
                     if i in cveRawList:
                         cveList.remove(i)
                         continue
-
-                if date in cveDict:
-                    cveDict[date].extend(cveList)
-                else:
-                    cveDict[date] = cveList
+                if len(cveList) > 0:
+                    if date in cveDict:
+                        cveDict[date].extend(cveList)
+                    else:
+                        cveDict[date] = cveList
 
                 cveRawList.extend(cveList)
 

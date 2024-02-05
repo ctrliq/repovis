@@ -144,7 +144,8 @@ class Output:
                 for cve in p.cve_dict[date]:
                     pkgsObj[p.source_name]["CVE_Fixes"][date].append(str(cve))
 
-
+        yamlText += yaml.dump(pkgsObj)
+        
         # Purely for show, but Python likes to not-indent yaml list entries and put single quotes around the date dict keys:
         yamlText = yamlText.replace("  '", "  ")
         yamlText = yamlText.replace("':", ":")

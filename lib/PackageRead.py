@@ -5,6 +5,7 @@ import dnf.module.module_base
 import hawkey, datetime, re
 from collections import OrderedDict
 from operator import itemgetter
+import yaml
 
 import os,shutil,subprocess,sys
 
@@ -22,8 +23,8 @@ class PackageRead:
     pkg = []
     dnfBase = set()
     buildTime = 0
-    
-    def __init__(self, repoList, repoDir, latest, bTime):
+    cveExtra = {}
+    def __init__(self, repoList, repoDir, latest, bTime, cveFile):
         if os.path.exists('/tmp/temp_dnf_cache'):
             shutil.rmtree('/tmp/temp_dnf_cache')
         
@@ -58,7 +59,13 @@ class PackageRead:
         # Gather list of all packages in the repo to a temporary list:
         tmpPkgList = self.dnfBase.sack.query().available().filter()
         
-        
+        # If we have an extra YAML CVE-fixes file given on the command line, load that into a dict:
+        if cveFile != "":
+            with open(cveFile) as f:
+                self.cveExtra = yaml.load(f, Loader=yaml.FullLoader)
+        else:
+            self.cveExtra = {}
+
         # Main loop: Go through every package we collected from our repos, find the matching source package, and create the de-duplicated pkg[] list
         # (with the source name as canonical name, and data tagging the module label, if any)
         for i in tmpPkgList:
@@ -106,7 +113,7 @@ class PackageRead:
             # Get filtered changelog entries (only changes since the 
             i.filter_changelogs = self.getFilteredChangeLog(i.changelogs)
             
-            i.cve_dict = self.getCveFromChangeLog(i.filter_changelogs)
+            i.cve_dict = self.getCveFromChangeLog(i.filter_changelogs, i.source_name)
             
             # Add our slightly-modified package to the main self.pkg list:
             self.pkg.append(i)
@@ -136,7 +143,7 @@ class PackageRead:
     
     
     # Return a dictionary-list of date:cve's found in a package's changelog
-    def getCveFromChangeLog(self, changelog):
+    def getCveFromChangeLog(self, changelog, package):
         cveDict = {}
         cveRawList = []
         # Compile regex isolating  "CVE-####-#####" text
@@ -156,6 +163,31 @@ class PackageRead:
                 cveDict[str(changelog[c]["timestamp"])] = cveList
                 cveRawList.extend(cveList)
         
+        # Check the supplemental CVE-fixes yaml file and add those CVEs as well:
+        if package in self.cveExtra and "CVE_Fixes" in self.cveExtra[package]:
+            for date in self.cveExtra[package]["CVE_Fixes"]:
+
+                # We don't consider CVEs in the YAML dated before our starting "buildTime":
+                if int(datetime.datetime.strptime(str(date), "%Y-%m-%d").timestamp()) < self.buildTime:
+                    continue
+                cveList = self.cveExtra[package]["CVE_Fixes"][date]
+
+                for i in cveList:
+                    # Ensure each CVE item in the yaml is a CVE (or rlsa/rhsa) item, and we haven't already seen it:
+                    if not i.startswith("CVE-") and not i.startswith("RLSA-") and not i.startswith("RHSA-"):
+                        cveList.remove(i)
+                        continue
+                    if i in cveRawList:
+                        cveList.remove(i)
+                        continue
+
+                if date in cveDict:
+                    cveDict[date].extend(cveList)
+                else:
+                    cveDict[date] = cveList
+
+                cveRawList.extend(cveList)
+
         return cveDict
 
 

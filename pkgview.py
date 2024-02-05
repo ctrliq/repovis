@@ -31,7 +31,7 @@ if args.startdate == "" and int(args.days) <= 0:
     sys.exit(1)
 
 
-packages = PackageRead(args.repos,args.repodir, True, buildTime)
+packages = PackageRead(args.repos,args.repodir, True, buildTime, args.cveyaml)
 
 out = Output(packages.pkg, args.file)
 

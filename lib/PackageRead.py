@@ -149,6 +149,9 @@ class PackageRead:
         # Compile regex isolating  "CVE-####-#####" text
         cveRegex = re.compile('CVE-\d+-\d+',  re.IGNORECASE)
         for c in range(0, len(changelog)):
+            # Disregard CVEs fixed outside the consideration window:
+            if int(datetime.datetime.strptime(str(changelog[c]["timestamp"]), "%Y-%m-%d").timestamp()) < self.buildTime:
+                continue
             tmpChange = changelog[c]["text"].upper()
             
             # Find all CVEs in the change text, de-duplicated in a list:

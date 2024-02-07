@@ -167,13 +167,13 @@ class PackageRead:
                 cveRawList.extend(cveList)
         
         # Check the supplemental CVE-fixes yaml file and add those CVEs as well:
-        if package in self.cveExtra and "CVE_Fixes" in self.cveExtra[package]:
-            for date in self.cveExtra[package]["CVE_Fixes"]:
+        if "packages" in self.cveExtra and package in self.cveExtra["packages"] and "cve_fixes" in self.cveExtra["packages"][package]:
+            for date in self.cveExtra["packages"][package]["cve_fixes"]:
 
                 # We don't consider CVEs in the YAML dated before our starting "buildTime":
                 if int(datetime.datetime.strptime(str(date), "%Y-%m-%d").timestamp()) < self.buildTime:
                     continue
-                cveList = self.cveExtra[package]["CVE_Fixes"][date]
+                cveList = self.cveExtra["packages"][package]["cve_fixes"][date]
 
                 for i in cveList:
                     # Ensure each CVE item in the yaml is a CVE (or rlsa/rhsa) item, and we haven't already seen it:

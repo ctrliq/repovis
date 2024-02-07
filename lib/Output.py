@@ -130,21 +130,30 @@ class Output:
 
         # We build a simplified dictionary from our list of packages with only name/date/cve listings:
         pkgsObj = {}
-
+        
+        # Version of yaml output format itself - staticly defined here
+        # Set up a separate header dict, because we want it at the top and not in alphabetical order
+        # (older el8 python yaml doesn't have an easy way to write a non-sorted dict)
+        header = {}
+        header["version"] = "v1alpha1"
+        
+        pkgsObj["packages"] = {}
         for p in self.pkgs:
             # If the CVE list is empty for this package, skip it:
             if len(p.cve_dict) == 0:
                 continue
 
-            pkgsObj[p.source_name] = {}
-            pkgsObj[p.source_name]["Build_Date"] = str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d'))
-            pkgsObj[p.source_name]["CVE_Fixes"] = {}
+            pkgsObj["packages"][p.source_name] = {}
+            pkgsObj["packages"][p.source_name]["package_version"] =  p.source_version + "-" + p.source_release
+            pkgsObj["packages"][p.source_name]["module_stream"] = str(p.module_label)
+            pkgsObj["packages"][p.source_name]["build_date"] = str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d'))
+            pkgsObj["packages"][p.source_name]["cve_fixes"] = {}
             for date in p.cve_dict.keys():
-                pkgsObj[p.source_name]["CVE_Fixes"][date] = []
+                pkgsObj["packages"][p.source_name]["cve_fixes"][date] = []
                 for cve in p.cve_dict[date]:
-                    pkgsObj[p.source_name]["CVE_Fixes"][date].append(str(cve))
+                    pkgsObj["packages"][p.source_name]["cve_fixes"][date].append(str(cve))
 
-        yamlText += yaml.dump(pkgsObj)
+        yamlText += yaml.dump(header) + yaml.dump(pkgsObj)
         
         # Purely for show, but Python likes to not-indent yaml list entries and put single quotes around the date dict keys:
         yamlText = yamlText.replace("  '", "  ")

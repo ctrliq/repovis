@@ -1,4 +1,4 @@
-# RepoVisPkgReview
+# RepoVis
 
 Simple tool to gather information about one or more DNF repositories.  Scans of versions, build times, and changelogs are performed, and a friendly summary in HTML, CSV, or YAML is presented.
 

@@ -42,6 +42,3 @@ class PackageInfo:
     buildtime: int
     filtered_changelogs: List[ChangelogEntry] = field(default_factory=list)
     cve_dict: Dict[str, List[str]] = field(default_factory=dict)
-    cvss_data: Dict[str, CvssInfo] = field(default_factory=dict)
-    """Mapping of CVE-ID → :class:`CvssInfo`.  Populated when advisory
-    JSON data is available; empty otherwise."""

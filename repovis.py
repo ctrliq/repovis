@@ -190,7 +190,7 @@ def main() -> None:
         cve_data=advisory_extra,
     )
 
-    out = Output(reader.packages, args.file)
+    out = Output(reader.packages, args.file, reader.cvss_map)
 
     if args.output == "html":
         out.write_html(args.title, args.description, build_time)

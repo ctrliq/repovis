@@ -134,6 +134,11 @@ class PackageRead:
 
         self._build_package_list(tmp_pkg_list, latest)
 
+        # Build a global CVSS lookup from all advisory/YAML data.
+        # This is CVE-scoped (not package-scoped): a given CVE always
+        # has the same score regardless of which package ships the fix.
+        self.cvss_map: Dict[str, CvssInfo] = self._build_global_cvss_map()
+
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
@@ -245,7 +250,6 @@ class PackageRead:
             cve_dict = self._get_cves_from_changelog(
                 filtered_changelogs, pkg.source_name
             )
-            cvss_data = self._get_cvss_data(pkg.source_name)
 
             # Emit a proper PackageInfo dataclass instead of monkey-patching
             self.packages.append(
@@ -257,7 +261,6 @@ class PackageRead:
                     buildtime=pkg.buildtime,
                     filtered_changelogs=filtered_changelogs,
                     cve_dict=cve_dict,
-                    cvss_data=cvss_data,
                 )
             )
 
@@ -395,6 +398,33 @@ class PackageRead:
                         base_score=float(base_score),
                         base_severity=str(base_severity),
                     )
+
+        return cvss
+
+    def _build_global_cvss_map(self) -> Dict[str, CvssInfo]:
+        """Build a single flat CVE-ID → :class:`CvssInfo` mapping.
+
+        Iterates **all** packages in ``self.cve_extra`` once and collects
+        every dict entry that carries ``base_score`` and ``base_severity``.
+        Because CVE IDs are globally unique the result is shared across
+        all packages.
+        """
+        cvss: Dict[str, CvssInfo] = {}
+
+        extra_packages = self.cve_extra.get("packages", {}) or {}
+        for _pkg_name, pkg_info in extra_packages.items():
+            for _date, cve_list in (pkg_info.get("cve_fixes", {}) or {}).items():
+                for item in cve_list:
+                    if not isinstance(item, dict):
+                        continue
+                    cve_id = item.get("cve_id", "")
+                    base_score = item.get("base_score")
+                    base_severity = item.get("base_severity")
+                    if cve_id and base_score is not None and base_severity:
+                        cvss[cve_id] = CvssInfo(
+                            base_score=float(base_score),
+                            base_severity=str(base_severity),
+                        )
 
         return cvss
 

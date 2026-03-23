@@ -11,7 +11,7 @@ Key capabilities:
 
 ## Requirements
 
-- Python 3
+- Python ≥ 3.9 (ships as system Python on Rocky Linux / RHEL 9)
 - DNF and RPM libraries (`dnf`, `rpm` Python bindings — pre-installed on RHEL/Rocky/CentOS)
 
 ## Quick Start

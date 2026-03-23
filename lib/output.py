@@ -117,7 +117,7 @@ class Output:
             html_data = f.read()
 
         html_data = (
-            html_data.replace("@@TITLE@@", title)
+            html_data.replace("@@TITLE@@", html.escape(title))
             .replace("@@DESCRIPTION@@", description)
             .replace("@@START_DATE@@", start_date)
             .replace("@@TIMESTAMP@@", timestamp)

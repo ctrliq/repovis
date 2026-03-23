@@ -26,19 +26,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Gather and summarise DNF repository history."
     )
-    parser.add_argument(
+    time_group = parser.add_mutually_exclusive_group()
+    time_group.add_argument(
         "-d", "--days",
         type=int,
         default=0,
         help="How many days back should the repository history be searched through.",
     )
-    parser.add_argument(
+    time_group.add_argument(
         "-s", "--startdate",
         type=str,
         default="",
         help=(
             "Earliest date to start searching repository history (YYYY-MM-DD). "
-            "Conflicts with --days."
+            "Mutually exclusive with --days."
         ),
     )
     parser.add_argument(
@@ -135,7 +136,9 @@ def _calculate_build_time(args: argparse.Namespace) -> int:
 
     if args.startdate:
         build_time = int(
-            datetime.datetime.strptime(args.startdate, "%Y-%m-%d").timestamp()
+            datetime.datetime.strptime(
+                args.startdate, "%Y-%m-%d"
+            ).replace(tzinfo=datetime.timezone.utc).timestamp()
         )
 
     if build_time is None:
@@ -190,16 +193,17 @@ def main() -> None:
         cve_data=advisory_extra,
     )
 
-    out = Output(reader.packages, args.file, reader.cvss_map)
+    try:
+        out = Output(reader.packages, args.file, reader.cvss_map)
 
-    if args.output == "html":
-        out.write_html(args.title, args.description, build_time)
-    elif args.output == "csv":
-        out.write_csv()
-    elif args.output == "yaml-cve":
-        out.write_cve_yaml(args.title, args.description)
-
-    reader.cleanup()
+        if args.output == "html":
+            out.write_html(args.title, args.description, build_time)
+        elif args.output == "csv":
+            out.write_csv()
+        elif args.output == "yaml-cve":
+            out.write_cve_yaml(args.title, args.description)
+    finally:
+        reader.cleanup()
 
 
 if __name__ == "__main__":

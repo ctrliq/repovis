@@ -18,7 +18,7 @@ import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
 import dnf
-import dnf.module.module_base
+import dnf.module.module_base  # noqa: F401 — side-effect: ensures module subsystem is initialised
 import hawkey
 import yaml
 
@@ -106,7 +106,7 @@ class PackageRead:
         try:
             self._dnf_base.read_all_repos()
         except Exception:
-            logger.error("Could not read repos")
+            logger.exception("Could not read repos")
             sys.exit(1)
 
         # Enable only the repos specified on the command line
@@ -196,6 +196,8 @@ class PackageRead:
 
     def _build_package_list(self, tmp_pkg_list: Any, latest: bool) -> None:
         """Iterate raw DNF packages and build the de-duplicated list."""
+        seen_versions: set[tuple[str, str, str]] = set()
+
         for pkg in tmp_pkg_list:
             # Skip packages outside our time window
             if pkg.buildtime < self.build_time:
@@ -215,12 +217,8 @@ class PackageRead:
                 continue
 
             # Skip if we already have this exact source version
-            if any(
-                p.source_name == pkg.source_name
-                and p.source_version == source_version
-                and p.source_release == source_release
-                for p in self.packages
-            ):
+            version_key = (pkg.source_name, source_version, source_release)
+            if version_key in seen_versions:
                 continue
 
             # Determine module label for modular packages
@@ -263,6 +261,7 @@ class PackageRead:
                     cve_dict=cve_dict,
                 )
             )
+            seen_versions.add(version_key)
 
     # ------------------------------------------------------------------
     # Changelog helpers

@@ -142,9 +142,22 @@ def _process_advisory(
                 # Derive the SRPM (source package) name by stripping the
                 # product-code prefix and the final two hyphen-delimited
                 # segments (version and release).
-                srpm = rpm.split(":", 1)[1]
-                srpm = srpm[: srpm.rfind("-")]
-                srpm = srpm[: srpm.rfind("-")]
+                srpm_full = rpm.split(":", 1)[1]
+                last_hyphen = srpm_full.rfind("-")
+                if last_hyphen == -1:
+                    logger.warning(
+                        "Unexpected SRPM format (missing version/release hyphens): %s",
+                        srpm_full,
+                    )
+                    continue
+                second_last_hyphen = srpm_full.rfind("-", 0, last_hyphen)
+                if second_last_hyphen == -1:
+                    logger.warning(
+                        "Unexpected SRPM format (missing second hyphen): %s",
+                        srpm_full,
+                    )
+                    continue
+                srpm = srpm_full[:second_last_hyphen]
 
                 packages = fixes["packages"]
 

@@ -1,169 +1,237 @@
 #!/usr/bin/python3
+"""Output formatters for RepoVis reports.
 
-import datetime, time
-import os, shutil, sys
+Produces HTML (DataTables), CSV, or YAML-CVE output from a list of
+:class:`PackageInfo` records.
+"""
+
+from __future__ import annotations
+
+import csv
+import datetime
+import html
+import io
+import logging
+import os
+import shutil
+import sys
+import time
+from typing import List
+
 import yaml
 
-# Given package data (package list from PackageRead class), produce HTML, CSV, or other output:
+from lib.models import PackageInfo
+
+logger = logging.getLogger(__name__)
+
+
+def _format_utc_date(epoch: int) -> str:
+    """Convert an epoch timestamp to a UTC ``YYYY-MM-DD`` string."""
+    return datetime.datetime.fromtimestamp(
+        epoch, tz=datetime.timezone.utc
+    ).strftime("%Y-%m-%d")
+
+
+def _current_timestamp_string() -> str:
+    """Return a human-readable 'now' timestamp with timezone indicator."""
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+    # Use the timezone name appropriate for whether DST is active
+    tz_index = time.daylight and time.localtime().tm_isdst
+    tz_name = time.tzname[tz_index] if time.tzname[tz_index] else "UTC"
+    return f"{stamp} ({tz_name})"
+
 
 class Output:
-    pkgs = []
-    title = ""
-    description = ""
-    
-    # pkgs => PackageRead.pkg[] list of dictionaries, contains package data
-    # outputType => CSV, HTML, etc.
-    # title / description => goes in HTML page
-    # startDate => epoch time where packages are first tracked from
-    # outFile => optional file to write data to
-    def __init__(self, pkgs, outFile):
-        self.pkgs = pkgs
-        self.outFile = outFile
-        return
+    """Render a list of :class:`PackageInfo` records to various formats.
 
-    def writeHTML(self, title, description, buildTime):
-        startDate = str(datetime.datetime.utcfromtimestamp(buildTime).strftime('%Y-%m-%d'))
-        tableData = ""
-       
-        for p in self.pkgs:
-            tableData += "<tr>\n<td> <b>" + p.source_name + "</b> </td>\n<td> " + p.source_version + "-" + p.source_release + " </td>\n<td> " + str(p.module_label) + " </td>\n<td> " + str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d')) + "</td>\n"
-            
-            # Get CVEs summary (marked by date):
-            cveText = "<ul>"
-            for date in p.cve_dict.keys():
-                for cve in p.cve_dict[date]:
-                    cveText += "<li>" + cve + "</li>\n"
-                    
-                #cveText += "</ul>\n"
-            if cveText == "<ul>":
-                cveText = "-"
-            else:
-                cveText += "</ul>"
+    Args:
+        packages: The package records to render.
+        out_file: Optional file path to write output to.
+            When empty, output is printed to stdout.
+    """
 
-            tableData += "<td> " + cveText + " </td>\n"
+    def __init__(self, packages: List[PackageInfo], out_file: str) -> None:
+        self._packages = packages
+        self._out_file = out_file
 
-            # Loop through changelog, produce 4-line summary and (expandable) full-changelog:
-            changeText = ""
-            changeSummary = ""
-            for c in range(0, len(p.filter_changelogs)):
-                changeText += str(p.filter_changelogs[c]["timestamp"]) + "  :  \n" + str(p.filter_changelogs[c]["text"]) + "\n"
-            
-            changeText = changeText.strip()
-            # Changelog longer than 5 lines ==> grab first 5 lines as a summary
-            if len(changeText.split("\n")) >= 4:
-                for line in range(0,3):
-                    changeSummary += changeText.split("\n")[line] + "\n"
-               
-            changeSummary = changeSummary.replace("\n", "<br />\n")
-            
-            # Write out changelog data cell:
-            if changeSummary == "":
-                tableData += "<td> " + changeText.replace("\n","<br />\n") + "</td>\n"
-            else:
-                tableData +="<td> " + changeSummary + "<br /><a><u>[Show All]</u></a><pre>" + changeText + "</pre></td>\n"
-                
-            tableData += "</tr>\n\n"
-            
-            
-        # write HTML:
-        # Current timestamp
-        TIMESTAMP = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-        TIMESTAMP += " (" + time.tzname[1] + ")"
+    # ------------------------------------------------------------------
+    # HTML
+    # ------------------------------------------------------------------
 
-        # HTML template file should be in this same lib/ folder
-        templateHtml = os.path.join(os.path.dirname(__file__), 'html', 'html_template.html')
-        
-        f = open(templateHtml, 'r')
-        htmlData = f.read()
-        f.close()
-        
-        htmlData = htmlData.replace("@@TITLE@@", title)
-        htmlData = htmlData.replace("@@DESCRIPTION@@", description)
-        htmlData = htmlData.replace("@@START_DATE@@", str(startDate))
-        htmlData = htmlData.replace("@@TIMESTAMP@@", str(TIMESTAMP))
-        htmlData = htmlData.replace("@@TABLE_DATA@@", str(tableData))
-        
-        if self.outFile != "":
-            f = open(self.outFile, 'w')
-            f.write(htmlData)
-            f.close()
-            outDir = os.path.dirname(os.path.abspath(self.outFile))
-            
-            # Copy html helper components (datatables/jquery) to HTML out dir
-            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'html', 'jquery-3.6.0.min.js'), os.path.join(outDir, 'jquery-3.6.0.min.js'))
-            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'html', 'datatables.min.js'), os.path.join(outDir, 'datatables.min.js'))
-            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'html', 'datatables.min.css'), os.path.join(outDir, 'datatables.min.css'))
-            print('JS, CSS, and HTML output written to: ' + str(outDir), file=sys.stderr)
-            
+    def write_html(self, title: str, description: str, build_time: int) -> None:
+        """Write an interactive HTML report using jQuery DataTables.
+
+        Args:
+            title: Page / heading title.
+            description: Sub-heading (may contain HTML).
+            build_time: Epoch start-date shown in the report header.
+        """
+        start_date = _format_utc_date(build_time)
+        table_data = self._build_html_table_rows()
+
+        timestamp = _current_timestamp_string()
+
+        # Read the template from the bundled html/ directory
+        template_path = os.path.join(
+            os.path.dirname(__file__), "html", "html_template.html"
+        )
+        with open(template_path, "r") as f:
+            html_data = f.read()
+
+        html_data = (
+            html_data.replace("@@TITLE@@", title)
+            .replace("@@DESCRIPTION@@", description)
+            .replace("@@START_DATE@@", start_date)
+            .replace("@@TIMESTAMP@@", timestamp)
+            .replace("@@TABLE_DATA@@", table_data)
+        )
+
+        if self._out_file:
+            with open(self._out_file, "w") as f:
+                f.write(html_data)
+
+            out_dir = os.path.dirname(os.path.abspath(self._out_file))
+            html_assets_dir = os.path.join(os.path.dirname(__file__), "html")
+            for asset in (
+                "jquery-3.6.0.min.js",
+                "datatables.min.js",
+                "datatables.min.css",
+            ):
+                shutil.copyfile(
+                    os.path.join(html_assets_dir, asset),
+                    os.path.join(out_dir, asset),
+                )
+            logger.info("JS, CSS, and HTML output written to: %s", out_dir)
         else:
-            print(htmlData)
+            print(html_data)
 
-    
-    # write csv output
-    def writeCSV(self):
-        # csv header:
-        csvData = "Package,Version,Module,Build Date,CVE Fixes\n"
-        
-        for p in self.pkgs:
-            
-            # Get CVE List text:
-            cveText = " "
-            for date in p.cve_dict.keys():
-                for cve in p.cve_dict[date]:
-                    cveText += cve + " " 
-            
-            csvData += p.source_name + "," + p.source_version + "-" + p.source_release + "," + p.module_label + "," + str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d')) + "," + cveText + "\n"
+    def _build_html_table_rows(self) -> str:
+        """Build the ``<tr>`` elements for the HTML DataTable."""
+        rows: list[str] = []
 
-        if self.outFile != "":
-            f = open(self.outFile, 'w')
-            f.write(csvData)
-            f.close()
-            print('CSV file written to: ' + str(self.outFile), file=sys.stderr)
+        for pkg in self._packages:
+            esc = html.escape  # shorthand
+
+            build_date = _format_utc_date(pkg.buildtime)
+
+            # --- CVE cell ---
+            cve_items = [
+                f"<li>{esc(cve)}</li>"
+                for cve_list in pkg.cve_dict.values()
+                for cve in cve_list
+            ]
+            cve_html = (
+                f"<ul>{''.join(cve_items)}</ul>" if cve_items else "-"
+            )
+
+            # --- Changelog cell ---
+            change_lines: list[str] = []
+            for entry in pkg.filtered_changelogs:
+                change_lines.append(
+                    f"{esc(entry.timestamp)}  :  \n{esc(entry.text)}"
+                )
+            change_text = "\n".join(change_lines).strip()
+
+            split_lines = change_text.split("\n")
+            if len(split_lines) >= 4:
+                summary = "<br />\n".join(split_lines[:3])
+                changelog_cell = (
+                    f"{summary}<br />\n"
+                    f"<br /><a><u>[Show All]</u></a>"
+                    f"<pre>{change_text}</pre>"
+                )
+            else:
+                changelog_cell = change_text.replace("\n", "<br />\n")
+
+            rows.append(
+                f"<tr>\n"
+                f"<td> <b>{esc(pkg.source_name)}</b> </td>\n"
+                f"<td> {esc(pkg.source_version)}-{esc(pkg.source_release)} </td>\n"
+                f"<td> {esc(pkg.module_label)} </td>\n"
+                f"<td> {build_date} </td>\n"
+                f"<td> {cve_html} </td>\n"
+                f"<td> {changelog_cell} </td>\n"
+                f"</tr>\n"
+            )
+
+        return "\n".join(rows)
+
+    # ------------------------------------------------------------------
+    # CSV
+    # ------------------------------------------------------------------
+
+    def write_csv(self) -> None:
+        """Write a CSV report of packages and their CVE fixes."""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["Package", "Version", "Module", "Build Date", "CVE Fixes"])
+
+        for pkg in self._packages:
+            cve_text = " ".join(
+                cve
+                for cve_list in pkg.cve_dict.values()
+                for cve in cve_list
+            )
+            writer.writerow([
+                pkg.source_name,
+                f"{pkg.source_version}-{pkg.source_release}",
+                pkg.module_label,
+                _format_utc_date(pkg.buildtime),
+                cve_text,
+            ])
+
+        csv_data = buf.getvalue()
+
+        if self._out_file:
+            with open(self._out_file, "w") as f:
+                f.write(csv_data)
+            logger.info("CSV file written to: %s", self._out_file)
         else:
-            print(csvData)
+            print(csv_data)
 
+    # ------------------------------------------------------------------
+    # YAML-CVE
+    # ------------------------------------------------------------------
 
-    def writeCveYAML(self, title, description):
-        yamlText = "# " + title + "\n\n"
-        yamlText += "# " + description + "\n\n"
-        yamlText += "---\n"
+    def write_cve_yaml(self, title: str, description: str) -> None:
+        """Write a YAML summary of packages and their resolved CVEs.
 
-        # We build a simplified dictionary from our list of packages with only name/date/cve listings:
-        pkgsObj = {}
-        
-        # Version of yaml output format itself - staticly defined here
-        # Set up a separate header dict, because we want it at the top and not in alphabetical order
-        # (older el8 python yaml doesn't have an easy way to write a non-sorted dict)
-        header = {}
-        header["version"] = "v1alpha1"
-        
-        pkgsObj["packages"] = {}
-        for p in self.pkgs:
-            # If the CVE list is empty for this package, skip it:
-            if len(p.cve_dict) == 0:
+        Only packages that have at least one CVE fix are included.
+
+        Args:
+            title: Report title (emitted as a YAML comment).
+            description: Report description (emitted as a YAML comment).
+        """
+        yaml_text = f"# {title}\n\n# {description}\n\n---\n"
+
+        header = {"version": "v1alpha1"}
+
+        packages_dict: dict[str, dict] = {}
+        for pkg in self._packages:
+            if not pkg.cve_dict:
                 continue
 
-            pkgsObj["packages"][p.source_name] = {}
-            pkgsObj["packages"][p.source_name]["package_version"] =  p.source_version + "-" + p.source_release
-            pkgsObj["packages"][p.source_name]["module_stream"] = str(p.module_label)
-            pkgsObj["packages"][p.source_name]["build_date"] = str(datetime.datetime.utcfromtimestamp(p.buildtime).strftime('%Y-%m-%d'))
-            pkgsObj["packages"][p.source_name]["cve_fixes"] = {}
-            for date in p.cve_dict.keys():
-                pkgsObj["packages"][p.source_name]["cve_fixes"][date] = []
-                for cve in p.cve_dict[date]:
-                    pkgsObj["packages"][p.source_name]["cve_fixes"][date].append(str(cve))
+            cve_fixes: dict[str, list[str]] = {}
+            for date, cves in pkg.cve_dict.items():
+                cve_fixes[date] = [str(c) for c in cves]
 
-        yamlText += yaml.dump(header) + yaml.dump(pkgsObj)
-        
-        # Purely for show, but Python likes to not-indent yaml list entries and put single quotes around the date dict keys:
-        yamlText = yamlText.replace("  '", "  ")
-        yamlText = yamlText.replace("':", ":")
-        yamlText = yamlText.replace(" - ", "   - ")
+            packages_dict[pkg.source_name] = {
+                "package_version": f"{pkg.source_version}-{pkg.source_release}",
+                "module_stream": str(pkg.module_label),
+                "build_date": _format_utc_date(pkg.buildtime),
+                "cve_fixes": cve_fixes,
+            }
 
-        if self.outFile != "":
-            f = open(self.outFile, 'w')
-            f.write(yamlText)
-            f.close()
-            print('YAML CVE file written to: ' + str(self.outFile), file=sys.stderr)
+        yaml_text += yaml.dump(header) + yaml.dump({"packages": packages_dict})
+
+        # Cosmetic fixups for readability (matches original behaviour)
+        yaml_text = yaml_text.replace("  '", "  ")
+        yaml_text = yaml_text.replace("':", ":")
+        yaml_text = yaml_text.replace(" - ", "   - ")
+
+        if self._out_file:
+            with open(self._out_file, "w") as f:
+                f.write(yaml_text)
+            logger.info("YAML CVE file written to: %s", self._out_file)
         else:
-            print(yamlText)
+            print(yaml_text)

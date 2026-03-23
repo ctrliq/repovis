@@ -22,7 +22,7 @@ import dnf.module.module_base
 import hawkey
 import yaml
 
-from lib.models import ChangelogEntry, PackageInfo
+from lib.models import ChangelogEntry, CvssInfo, PackageInfo
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,9 @@ class PackageRead:
             source-name + module-stream is kept.
         build_time: Epoch timestamp — packages built before this are ignored.
         cve_file: Optional path to a supplemental YAML file of extra CVE data.
+        cve_data: Optional pre-built CVE data dictionary (same schema as the
+            YAML file).  When provided, this is merged with any data loaded
+            from *cve_file*.
     """
 
     def __init__(
@@ -83,6 +86,7 @@ class PackageRead:
         latest: bool,
         build_time: int,
         cve_file: str,
+        cve_data: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.packages: List[PackageInfo] = []
         self.build_time: int = build_time
@@ -124,6 +128,10 @@ class PackageRead:
             with open(cve_file) as f:
                 self.cve_extra = yaml.safe_load(f) or {}
 
+        # Merge pre-built CVE data (e.g. from --advisory-dir) if provided
+        if cve_data:
+            self._merge_cve_data(cve_data)
+
         self._build_package_list(tmp_pkg_list, latest)
 
     # ------------------------------------------------------------------
@@ -134,6 +142,48 @@ class PackageRead:
         """Remove the temporary DNF cache directory."""
         if os.path.exists(self._cache_dir):
             shutil.rmtree(self._cache_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------------
+    # CVE data merging
+    # ------------------------------------------------------------------
+
+    def _merge_cve_data(self, cve_data: Dict[str, Any]) -> None:
+        """Merge *cve_data* into ``self.cve_extra``.
+
+        When both ``cve_file`` and ``cve_data`` contribute entries for the
+        same package/date, the CVE lists are combined (duplicates removed).
+
+        CVE list items may be plain strings (from YAML) or dicts with a
+        ``cve_id`` key (from advisory reader).
+        """
+        incoming_packages = cve_data.get("packages", {}) or {}
+        existing_packages = self.cve_extra.setdefault("packages", {})
+
+        for pkg_name, pkg_info in incoming_packages.items():
+            if pkg_name not in existing_packages:
+                existing_packages[pkg_name] = pkg_info
+                continue
+
+            # Merge cve_fixes date-by-date
+            existing_fixes = existing_packages[pkg_name].setdefault(
+                "cve_fixes", {}
+            )
+            for date, cve_list in (pkg_info.get("cve_fixes", {}) or {}).items():
+                if date not in existing_fixes:
+                    existing_fixes[date] = cve_list
+                else:
+                    existing_ids = {
+                        (e.get("cve_id") if isinstance(e, dict) else str(e))
+                        for e in existing_fixes[date]
+                    }
+                    for cve in cve_list:
+                        cve_id = (
+                            cve.get("cve_id") if isinstance(cve, dict)
+                            else str(cve)
+                        )
+                        if cve_id not in existing_ids:
+                            existing_fixes[date].append(cve)
+                            existing_ids.add(cve_id)
 
     # ------------------------------------------------------------------
     # Package list construction
@@ -195,6 +245,7 @@ class PackageRead:
             cve_dict = self._get_cves_from_changelog(
                 filtered_changelogs, pkg.source_name
             )
+            cvss_data = self._get_cvss_data(pkg.source_name)
 
             # Emit a proper PackageInfo dataclass instead of monkey-patching
             self.packages.append(
@@ -206,6 +257,7 @@ class PackageRead:
                     buildtime=pkg.buildtime,
                     filtered_changelogs=filtered_changelogs,
                     cve_dict=cve_dict,
+                    cvss_data=cvss_data,
                 )
             )
 
@@ -274,7 +326,7 @@ class PackageRead:
                 cve_dict[str(entry.timestamp)] = new_cves
                 seen.update(new_cves)
 
-        # --- CVEs from supplemental YAML ---
+        # --- CVEs from supplemental YAML / advisory data ---
         extra_packages = self.cve_extra.get("packages", {}) or {}
         extra_pkg = extra_packages.get(package, {}) or {}
         extra_fixes = extra_pkg.get("cve_fixes", {}) or {}
@@ -286,17 +338,27 @@ class PackageRead:
             if date_epoch < self.build_time:
                 continue
 
-            # Filter: must be a known advisory prefix and not already seen
-            new_cves = [
-                cve
-                for cve in cve_list
-                if (
-                    cve.startswith("CVE-")
-                    or cve.startswith("RLSA-")
-                    or cve.startswith("RHSA-")
-                )
-                and cve not in seen
-            ]
+            # cve_list items may be plain strings (from YAML files) or
+            # dicts with "cve_id" + optional CVSS keys (from advisory
+            # reader).  Normalise to plain CVE-ID strings here; CVSS
+            # metadata is stored separately via cvss_extra.
+            new_cves: List[str] = []
+            for item in cve_list:
+                if isinstance(item, dict):
+                    cve_id = item.get("cve_id", "")
+                else:
+                    cve_id = str(item)
+
+                if cve_id in seen:
+                    continue
+                if not (
+                    cve_id.startswith("CVE-")
+                    or cve_id.startswith("RLSA-")
+                    or cve_id.startswith("RHSA-")
+                ):
+                    continue
+
+                new_cves.append(cve_id)
 
             if new_cves:
                 date_key = str(date)  # normalise to string for dict key
@@ -307,6 +369,34 @@ class PackageRead:
                 seen.update(new_cves)
 
         return cve_dict
+
+    def _get_cvss_data(self, package: str) -> Dict[str, CvssInfo]:
+        """Extract CVSS metadata for a package from supplemental data.
+
+        Returns a dict mapping CVE-ID strings to :class:`CvssInfo`.
+        Only entries that carry ``base_score`` and ``base_severity``
+        are included.
+        """
+        cvss: Dict[str, CvssInfo] = {}
+
+        extra_packages = self.cve_extra.get("packages", {}) or {}
+        extra_pkg = extra_packages.get(package, {}) or {}
+        extra_fixes = extra_pkg.get("cve_fixes", {}) or {}
+
+        for _date, cve_list in extra_fixes.items():
+            for item in cve_list:
+                if not isinstance(item, dict):
+                    continue
+                cve_id = item.get("cve_id", "")
+                base_score = item.get("base_score")
+                base_severity = item.get("base_severity")
+                if cve_id and base_score is not None and base_severity:
+                    cvss[cve_id] = CvssInfo(
+                        base_score=float(base_score),
+                        base_severity=str(base_severity),
+                    )
+
+        return cvss
 
     # ------------------------------------------------------------------
     # Module introspection

@@ -14,6 +14,7 @@ import logging
 import sys
 import time
 
+from lib.advisory_read import read_advisories_from_directory
 from lib.output import Output
 from lib.package_read import PackageRead
 
@@ -72,6 +73,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Custom YAML file with additional dates + CVEs resolved. "
             "See docs for the specific YAML format."
+        ),
+    )
+    parser.add_argument(
+        "--advisory-dir",
+        type=str,
+        default="",
+        help=(
+            "Path to a local directory containing CSAF advisory JSON files. "
+            "When provided, the advisory JSONs are processed on the fly to "
+            "generate supplemental CVE data (equivalent to --cveyaml). "
+            "Requires --product-codes."
+        ),
+    )
+    parser.add_argument(
+        "--product-codes",
+        type=str,
+        nargs="+",
+        default=[],
+        help=(
+            "One or more product codes used to filter advisory data "
+            "(e.g. lts-8.6 fipscompliant-8). Required when --advisory-dir is set."
         ),
     )
     parser.add_argument(
@@ -136,6 +158,27 @@ def main() -> None:
     parser = _build_arg_parser()
     args = parser.parse_args()
 
+    # --advisory-dir and --cveyaml are mutually exclusive
+    if args.advisory_dir and args.cveyaml:
+        logger.error("--advisory-dir and --cveyaml cannot be used together.")
+        sys.exit(1)
+
+    # --advisory-dir requires --product-codes
+    if args.advisory_dir and not args.product_codes:
+        logger.error("--advisory-dir requires --product-codes to be specified.")
+        sys.exit(1)
+
+    # If an advisory directory is given, generate the CVE data on the fly
+    advisory_extra = {}
+    if args.advisory_dir:
+        advisory_extra = read_advisories_from_directory(
+            args.advisory_dir, args.product_codes
+        )
+        logger.info(
+            "Generated CVE data for %d package(s) from advisory JSONs.",
+            len(advisory_extra.get("packages", {})),
+        )
+
     build_time = _calculate_build_time(args)
 
     reader = PackageRead(
@@ -144,6 +187,7 @@ def main() -> None:
         latest=True,
         build_time=build_time,
         cve_file=args.cveyaml,
+        cve_data=advisory_extra,
     )
 
     out = Output(reader.packages, args.file)

@@ -11,6 +11,14 @@ from typing import Dict, List
 
 
 @dataclass
+class CvssInfo:
+    """CVSS v3 scoring information for a single CVE."""
+
+    base_score: float
+    base_severity: str
+
+
+@dataclass
 class ChangelogEntry:
     """A single changelog entry with a timestamp and text body."""
 
@@ -34,3 +42,6 @@ class PackageInfo:
     buildtime: int
     filtered_changelogs: List[ChangelogEntry] = field(default_factory=list)
     cve_dict: Dict[str, List[str]] = field(default_factory=dict)
+    cvss_data: Dict[str, CvssInfo] = field(default_factory=dict)
+    """Mapping of CVE-ID → :class:`CvssInfo`.  Populated when advisory
+    JSON data is available; empty otherwise."""

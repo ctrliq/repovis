@@ -311,15 +311,13 @@ class PackageRead:
         seen: set[str] = set()
 
         # --- CVEs from the RPM changelog ---
+        # The *changelog* list is already filtered by
+        # ``_get_filtered_changelog`` (which always keeps the most-recent
+        # entry even when its date precedes *build_time*).  We must not
+        # apply a second date filter here — every entry that was kept
+        # should have its CVEs extracted so the CVE-fixes column stays
+        # consistent with the Changelogs column.
         for entry in changelog:
-            entry_epoch = int(
-                datetime.datetime.strptime(
-                    str(entry.timestamp), "%Y-%m-%d"
-                ).timestamp()
-            )
-            if entry_epoch < self.build_time:
-                continue
-
             # Find unique CVEs in this entry, excluding already-seen ones
             raw_cves = list(dict.fromkeys(_CVE_REGEX.findall(entry.text.upper())))
             new_cves = [c for c in raw_cves if c not in seen]

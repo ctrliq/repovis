@@ -286,8 +286,10 @@ class PackageRead:
 
         for entry in changelog[1:]:
             entry_epoch = int(
-                datetime.datetime.fromordinal(
-                    entry["timestamp"].toordinal()
+                datetime.datetime.combine(
+                    entry["timestamp"],
+                    datetime.time.min,
+                    tzinfo=datetime.timezone.utc,
                 ).timestamp()
             )
             if entry_epoch > self.build_time:
@@ -333,7 +335,9 @@ class PackageRead:
 
         for date, cve_list in extra_fixes.items():
             date_epoch = int(
-                datetime.datetime.strptime(str(date), "%Y-%m-%d").timestamp()
+                datetime.datetime.strptime(str(date), "%Y-%m-%d")
+                .replace(tzinfo=datetime.timezone.utc)
+                .timestamp()
             )
             if date_epoch < self.build_time:
                 continue

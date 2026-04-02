@@ -1,6 +1,5 @@
 <html>
-
-<!--
+  <!--
 HTML Template for displaying package history results.  Uses jquery/datatables/css.
 
 Template variables that the program fills in:
@@ -14,90 +13,100 @@ TABLE_DATA
 
 -->
 
-<head>
-<title>@@TITLE@@</title>
+  <head>
+    <title>@@TITLE@@</title>
 
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
+    <meta
+      http-equiv="Cache-Control"
+      content="no-cache, no-store, must-revalidate"
+    />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
 
-<link rel="stylesheet" type="text/css" href="datatables.min.css"/>
-<script type="text/javascript" src="jquery-3.6.0.min.js"></script>
-<script type="text/javascript" src="datatables.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="datatables.min.css" />
+    <script type="text/javascript" src="jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="datatables.min.js"></script>
 
-</head>
+    <style type="text/css">
+      .cvss {
+        font-size: 0.85em;
+        margin-left: 0.3em;
+      }
+      .cvss-critical {
+        color: #7d1a1a;
+        font-weight: bold;
+      }
+      .cvss-high {
+        color: #d63031;
+      }
+      .cvss-medium {
+        color: #e67e22;
+      }
+      .cvss-low {
+        color: #6c757d;
+      }
+      .cvss-none {
+        color: #adb5bd;
+      }
+    </style>
+  </head>
 
-<body>
+  <body>
+    <h1>@@TITLE@@</h1>
 
-<h1>@@TITLE@@</h1>
+    @@DESCRIPTION@@
 
-@@DESCRIPTION@@
+    <p />
+    Showing builds from <b>@@START_DATE@@</b> and later.
+    <p />
+    This page was generated on <b>@@TIMESTAMP@@</b>
 
-<p />
-Showing builds from <b>@@START_DATE@@</b> and later.
-<p />
-This page was generated on <b>@@TIMESTAMP@@</b>
+    <p><br /><br /></p>
 
-<p><br /><br />
+    <table id="RockyData" class="display">
+      <thead>
+        <tr>
+          <th style="text-align: left">Package</th>
+          <th style="text-align: left">Version</th>
+          <th style="text-align: left">Module</th>
+          <th style="text-align: left">Build Date</th>
+          <th style="text-align: left">CVE Fixes</th>
+          <th style="text-align: left">Changelogs</th>
+        </tr>
+      </thead>
+      <tbody>
+        @@TABLE_DATA@@
+      </tbody>
+    </table>
 
-<table id="RockyData" class="display">
-<thead>
-<tr>
-  <th style="text-align:left">Package</th>
-  <th style="text-align:left">Version</th>
-  <th style="text-align:left">Module</th>
-  <th style="text-align:left">Build Date</th>
-  <th style="text-align:left">CVE Fixes</th>
-  <th style="text-align:left">Changelogs</th>
-</tr>
-</thead>
-<tbody>
-@@TABLE_DATA@@
-</tbody>
-</table>
-
-
-	
-<script type="text/javascript">
-  // Simple datatables table with some default settings, ordered by date descending
-  $(document).ready(function() {
-    $('#RockyData').DataTable( {
-        "paging":   true,
-        "ordering": true,
-        "info":     true,
-        "order": [[ 3, "desc" ]],
-        "lengthMenu": [ [100, 200, 500, -1], [100, 200, 500, "All"] ],
-        "columns": [
-            null,
-            null,
-            null,
-            null,
-            { "width": "15%" },
-            null
-        ],
-        // Logic for expanding/contracting full changelog in data cell:
-        // need to turn off (reset) all "click" actions every time the table is updated (user selects different page, different number of rows displayed, etc.)
-        // All rows are "slideUp" by default, and toggled when a user clicks the <a> link for Show More in the cell
-        // So a data cell needs to look like:  <td> [changelog_preview_5_lines] <br /><br /><a>[Show All]</a><pre>FULL_CHANGELOG</pre> - only the <pre> contents are revealed/hidden
-        "drawCallback": function( settings ) {
-            $('td a').off('click');   
+    <script type="text/javascript">
+      // Simple datatables table with some default settings, ordered by date descending
+      $(document).ready(function () {
+        $('#RockyData').DataTable({
+          paging: true,
+          ordering: true,
+          info: true,
+          order: [[3, 'desc']],
+          lengthMenu: [
+            [100, 200, 500, -1],
+            [100, 200, 500, 'All'],
+          ],
+          columns: [null, null, null, null, { width: '15%' }, null],
+          // Logic for expanding/contracting full changelog in data cell:
+          // need to turn off (reset) all "click" actions every time the table is updated (user selects different page, different number of rows displayed, etc.)
+          // All rows are "slideUp" by default, and toggled when a user clicks the <a> link for Show More in the cell
+          // So a data cell needs to look like:  <td> [changelog_preview_5_lines] <br /><br /><a>[Show All]</a><pre>FULL_CHANGELOG</pre> - only the <pre> contents are revealed/hidden
+          drawCallback: function (settings) {
+            $('td a').off('click');
             $('td pre').slideUp();
-            $('td a').click(          
-                function () {
-                    $(this).closest('tr').find('pre').slideToggle()
-                }
-            );
-            
-        }
-      
-    } );
-  } );
+            $('td a').click(function () {
+              $(this).closest('tr').find('pre').slideToggle();
+            });
+          },
+        });
+      });
+    </script>
+  </body>
 
-</script>
-</body>
-
-
-<p />
-
+  <p />
 </html>
-
